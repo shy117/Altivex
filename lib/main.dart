@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'altimeter_page.dart';
+import 'altimeter_controller.dart';
 
 void main() => runApp(const AltivexApp());
 
 class AltivexApp extends StatelessWidget {
-  const AltivexApp({super.key});
+  const AltivexApp({super.key, this.source});
+  final AltimeterController? source;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -17,6 +19,6 @@ class AltivexApp extends StatelessWidget {
       scaffoldBackgroundColor: const Color(0xFF101A23),
       useMaterial3: true,
     ),
-    home: const AltimeterPage(),
+    home: AltimeterPage(source: source),
   );
 }

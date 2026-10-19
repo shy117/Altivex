@@ -10,8 +10,19 @@ import 'package:altivex/demo_altimeter.dart';
 import 'package:altivex/altimeter_controller.dart';
 import 'package:altivex/measurement_hardware.dart';
 import 'package:altivex/photo_preview_page.dart';
+import 'package:altivex/photo_store.dart';
+import 'package:altivex/camera_preferences.dart';
 
 import 'support/fake_hardware.dart';
+
+class MemoryPhotoStore extends PhotoStore {
+  @override
+  Future<void> load() async {}
+  @override
+  Future<void> savePreferences(CameraPreferences value) async {
+    preferences = value;
+  }
+}
 
 void main() {
   testWidgets(
@@ -256,6 +267,7 @@ void main() {
       MaterialApp(
         home: PhotoPreviewPage(
           source: source,
+          store: MemoryPhotoStore(),
           requestCameraAccess: () async => true,
           enumerateCameras: () async => [],
         ),
@@ -271,8 +283,8 @@ void main() {
     expect(find.text('返回'), findsNothing);
     expect(find.byIcon(Icons.water_drop), findsOneWidget);
     final back = tester.getCenter(find.byTooltip('返回'));
-    final watermark = tester.getCenter(find.byTooltip('顶部水印开关'));
-    final previous = tester.getCenter(find.byTooltip('上一张照片'));
+    final watermark = tester.getCenter(find.byTooltip('水印开关'));
+    final previous = tester.getCenter(find.byTooltip('拍摄记录'));
     final shutter = tester.getCenter(find.byTooltip('拍照'));
     final switchCamera = tester.getCenter(find.byTooltip('切换摄像头'));
     expect(back.dx, lessThan(watermark.dx));
@@ -281,7 +293,7 @@ void main() {
     expect(shutter.dx, lessThan(switchCamera.dx));
     expect(previous.dy, shutter.dy);
     expect(switchCamera.dy, shutter.dy);
-    await tester.tap(find.byTooltip('顶部水印开关'));
+    await tester.tap(find.byTooltip('水印开关'));
     await tester.pump();
     expect(find.byIcon(Icons.water_drop_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);

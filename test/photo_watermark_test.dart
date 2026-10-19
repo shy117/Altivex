@@ -1,12 +1,224 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:altivex/altimeter_reading.dart';
 import 'package:altivex/photo_watermark.dart';
+import 'package:altivex/camera_preferences.dart';
+import 'package:image/image.dart' as image;
+
+import 'dart:convert';
+import 'dart:io';
 
 void main() {
+  testWidgets(
+    'Android file composition sends only transparent watermark and exact crop',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final directory = Directory.systemTemp.createTempSync(
+        'altivex-composite-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final output = File('${directory.path}/Altivex_100.jpg');
+      const channel = MethodChannel('altivex/image');
+      final methods = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        methods.add(call.method);
+        if (call.method == 'photoInfo') return {'width': 300, 'height': 400};
+        expect(call.method, 'composeJpeg');
+        expect(call.arguments['crop'], [37.5, 0.0, 262.5, 400.0]);
+        expect(call.arguments.containsKey('rgba'), false);
+        final overlay = image.Image(width: 225, height: 400, numChannels: 4);
+        var tilePixels = 0;
+        for (final tile in call.arguments['tiles'] as List) {
+          final bitmap = image.decodePng(tile['bytes'] as Uint8List)!;
+          tilePixels += bitmap.width * bitmap.height;
+          image.compositeImage(
+            overlay,
+            bitmap,
+            dstX: tile['left'] as int,
+            dstY: tile['top'] as int,
+          );
+        }
+        expect(tilePixels, lessThan(225 * 400 * .4));
+        expect(overlay.getPixel(110, 200).a, 0);
+        expect(overlay.getPixel(10, 14).a, greaterThan(0));
+        await output.writeAsBytes([255, 216, 255, 217]);
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      await tester.runAsync(() async {
+        final file = await PhotoWatermark().create(
+          'native-only-original.jpg',
+          AltimeterReading(capturedAt: DateTime(2026)),
+          destination: output,
+          format: PhotoFormat.jpeg,
+          aspect: PhotoAspect.wide,
+        );
+        expect(file.path, output.path);
+        expect(methods, ['photoInfo', 'composeJpeg']);
+      });
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+  testWidgets('Watermark title keeps the same relative size at 3000x4000', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final reading = AltimeterReading(
+        capturedAt: DateTime(2026),
+        altitudeMeters: 3628,
+      );
+      final logo = await loadWatermarkLogo();
+      Future<Rect> titleBounds(int width, int height) async {
+        final recorder = ui.PictureRecorder();
+        PhotoWatermarkPainter(
+          reading,
+          logo: logo,
+        ).paint(Canvas(recorder), Size(width.toDouble(), height.toDouble()));
+        final picture = recorder.endRecording();
+        final output = await picture.toImage(width, height);
+        try {
+          final data = (await output.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          ))!;
+          var left = width, right = 0, top = height, bottom = 0;
+          for (var y = 0; y < height ~/ 8; y++) {
+            for (var x = 0; x < width ~/ 2; x++) {
+              final offset = (y * width + x) * 4;
+              if (data.getUint8(offset) > 200 &&
+                  data.getUint8(offset + 1) > 200 &&
+                  data.getUint8(offset + 2) > 200) {
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+              }
+            }
+          }
+          return Rect.fromLTRB(
+            left / width,
+            top / height,
+            (right + 1) / width,
+            (bottom + 1) / height,
+          );
+        } finally {
+          output.dispose();
+          picture.dispose();
+        }
+      }
+
+      final preview = await titleBounds(300, 400);
+      final photo = await titleBounds(3000, 4000);
+      expect(photo.width, closeTo(preview.width, .008));
+      expect(photo.height, closeTo(preview.height, .004));
+      // Allow two preview pixels for rasterization at the small size.
+      expect(photo.left, closeTo(preview.left, .007));
+    });
+  });
+  testWidgets(
+    'Android JPEG encoder receives full-size RGBA instead of intermediate PNG',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      const channel = MethodChannel('altivex/image');
+      MethodCall? call;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        value,
+      ) async {
+        call = value;
+        return Uint8List.fromList([255, 216, 255, 217]);
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      await tester.runAsync(() async {
+        final input = image.encodePng(
+          image.Image(width: 300, height: 400)
+            ..clear(image.ColorRgb8(250, 20, 60)),
+        );
+        final result = await PhotoWatermark().render(
+          input,
+          AltimeterReading(capturedAt: DateTime(2026)),
+          enabled: false,
+          format: PhotoFormat.jpeg,
+        );
+        expect(result.take(2), [255, 216]);
+        expect(call!.method, 'encodeJpeg');
+        expect(call!.arguments['width'], 300);
+        expect(call!.arguments['height'], 400);
+        final pixels = call!.arguments['rgba'] as Uint8List;
+        expect(pixels.length, 300 * 400 * 4);
+        expect(pixels.take(4), [250, 20, 60, 255]);
+      });
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+  testWidgets(
+    'Templates are distinct, watermark can be fully disabled and JPEG uses selected crop',
+    (tester) async {
+      await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFF102030), BlendMode.src);
+        final picture = recorder.endRecording();
+        final original = await picture.toImage(600, 800);
+        final bytes = (await original.toByteData(
+          format: ui.ImageByteFormat.png,
+        ))!.buffer.asUint8List();
+        final snapshot = AltimeterReading(
+          capturedAt: DateTime(2026, 10, 16),
+          altitudeMeters: 3628,
+          latitudeDegrees: 39.8,
+          longitudeDegrees: -122.4,
+          pressureHpa: 800,
+        );
+        final outputs = <String>{};
+        for (final style in WatermarkStyle.values) {
+          final result = await PhotoWatermark().render(
+            bytes,
+            snapshot,
+            style: style,
+          );
+          outputs.add(base64Encode(result));
+        }
+        expect(outputs.length, 4);
+        final clean = await PhotoWatermark().render(
+          bytes,
+          snapshot,
+          enabled: false,
+        );
+        final decoded = image.decodePng(clean)!;
+        expect(decoded.getPixel(20, 20).r, 16);
+        expect(decoded.getPixel(20, 780).g, 32);
+        final jpeg = await PhotoWatermark().render(
+          bytes,
+          snapshot,
+          format: PhotoFormat.jpeg,
+          aspect: PhotoAspect.wide,
+        );
+        expect(jpeg.take(2), [255, 216]);
+        final jpg = image.decodeJpg(jpeg)!;
+        expect(jpg.width, 450);
+        expect(jpg.height, 800);
+        expect(jpeg.length, lessThan(150000));
+        original.dispose();
+        picture.dispose();
+      });
+    },
+  );
   testWidgets(
     'Landscape photo retains orientation and matches viewfinder watermark',
     (tester) async {
@@ -23,7 +235,12 @@ void main() {
           final recorder = ui.PictureRecorder();
           final canvas = Canvas(recorder)
             ..drawColor(const Color(0xFF102030), BlendMode.src);
-          if (watermark) PhotoWatermarkPainter(snapshot).paint(canvas, size);
+          if (watermark) {
+            PhotoWatermarkPainter(
+              snapshot,
+              logo: await loadWatermarkLogo(),
+            ).paint(canvas, size);
+          }
           final picture = recorder.endRecording();
           try {
             return await picture.toImage(1000, 600);

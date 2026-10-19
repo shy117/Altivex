@@ -9,6 +9,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'altimeter_controller.dart';
+import 'app_orientation.dart';
 import 'altimeter_reading.dart';
 import 'camera_access.dart';
 import 'photo_watermark.dart';
@@ -695,6 +696,7 @@ class _PhotoPreviewPageState extends State<PhotoPreviewPage>
     if (!_storeReady) return;
     await showModalBottomSheet<void>(
       context: context,
+      routeSettings: const RouteSettings(name: portraitSettingsRoute),
       isScrollControlled: true,
       enableDrag: false,
       backgroundColor: const Color(0xFF171C24),
@@ -968,7 +970,7 @@ class _PhotoPreviewPageState extends State<PhotoPreviewPage>
     try {
       final preview = Navigator.push<void>(
         context,
-        MaterialPageRoute(
+        PhotoPageRoute<void>(
           builder: (_) => PhotoBrowserPage(
             records: browse ? _store.records : [record],
             initialId: record.id,

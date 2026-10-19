@@ -15,6 +15,21 @@ import 'package:altivex/camera_preferences.dart';
 
 import 'support/fake_hardware.dart';
 
+import 'package:altivex/home_preferences.dart';
+
+class MemoryHomeStore extends HomeStore {
+  HomePreferences value = const HomePreferences();
+  @override
+  Future<HomePreferences> load() async => value;
+  @override
+  Future<void> save(HomePreferences preferences) async {
+    value = preferences;
+  }
+
+  @override
+  Future<File?> backgroundFile(HomePreferences preferences) async => null;
+}
+
 class MemoryPhotoStore extends PhotoStore {
   @override
   Future<void> load() async {}
@@ -81,7 +96,7 @@ void main() {
     },
   );
 
-  testWidgets('Landscape home keeps the dial and coordinates in the viewport', (
+  testWidgets('Portrait home keeps the dial and coordinates in the viewport', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -90,15 +105,17 @@ void main() {
     final source = DemoAltimeter();
     addTearDown(source.dispose);
     for (final size in [
-      const Size(844, 390),
-      const Size(640, 320),
+      const Size(390, 844),
+      const Size(320, 640),
       const Size(390, 844),
     ]) {
       tester.view.physicalSize = size;
-      await tester.pumpWidget(AltivexApp(source: source));
+      await tester.pumpWidget(
+        AltivexApp(source: source, homeStore: MemoryHomeStore()),
+      );
       await tester.pump();
       expect(tester.takeException(), isNull);
-      final altitude = tester.getRect(find.text('3628 米'));
+      final altitude = tester.getRect(find.text('3628 米', findRichText: true));
       final latitude = tester.getRect(find.text(source.reading.latitude));
       final longitude = tester.getRect(find.text(source.reading.longitude));
       for (final rect in [altitude, latitude, longitude]) {
@@ -106,10 +123,6 @@ void main() {
         expect(rect.bottom, lessThanOrEqualTo(size.height));
         expect(rect.left, greaterThanOrEqualTo(0));
         expect(rect.right, lessThanOrEqualTo(size.width));
-      }
-      if (size.width > size.height) {
-        expect(altitude.right, lessThan(latitude.left));
-        expect(tester.getRect(find.byTooltip('设置')).top, lessThan(20));
       }
     }
     await tester.pumpWidget(const SizedBox());
@@ -212,7 +225,7 @@ void main() {
     },
   );
 
-  testWidgets('Archived reference layout and unit settings remain available', (
+  testWidgets('Home dashboard and persistent unit settings remain available', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -221,15 +234,17 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final source = DemoAltimeter();
     addTearDown(source.dispose);
-    await tester.pumpWidget(AltivexApp(source: source));
+    await tester.pumpWidget(
+      AltivexApp(source: source, homeStore: MemoryHomeStore()),
+    );
     await tester.pump();
-    expect(find.text('3628 米'), findsOneWidget);
-    expect(find.text('实时高度表'), findsOneWidget);
+    expect(find.text('3628 米', findRichText: true), findsOneWidget);
+    expect(find.text('Altivex'), findsOneWidget);
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('英尺 ft'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('ft'), findsOneWidget);
+    expect(find.textContaining('ft', findRichText: true), findsWidgets);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets(
@@ -242,12 +257,14 @@ void main() {
         source.dispose();
         await hardware.close();
       });
-      await tester.pumpWidget(AltivexApp(source: source));
+      await tester.pumpWidget(
+        AltivexApp(source: source, homeStore: MemoryHomeStore()),
+      );
       await tester.pump();
       hardware.pressures.addError(UnsupportedError('missing'));
       hardware.headings.add(null);
       await tester.pump();
-      expect(find.text('-- 米'), findsOneWidget);
+      expect(find.text('-- 米', findRichText: true), findsOneWidget);
       expect(find.text('纬度不可用'), findsOneWidget);
       expect(find.textContaining('模拟数据'), findsNothing);
       expect(tester.takeException(), isNull);

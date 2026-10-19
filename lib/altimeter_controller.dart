@@ -291,11 +291,11 @@ class AltimeterController extends ChangeNotifier {
     await Future.wait(old.map((s) => s.cancel()));
   }
 
-  void pause() {
+  void pause({bool notify = true}) {
     _paused = true;
     _generation++;
     unawaited(_cancel());
-    _emit();
+    if (notify) _emit();
   }
 
   @override

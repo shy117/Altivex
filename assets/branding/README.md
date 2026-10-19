@@ -23,3 +23,5 @@ python assets/branding/generate_logo_images.py --background transparent
 重新运行会更新对应的生成图片，原始 SVG 保持不变。
 
 Android 启动图标使用这些品牌资源；`generate_android_icons.py` 生成传统图标和自适应图标前景。
+
+主界面资源：`altivex-logo-dark.svg` 从原始 SVG 仅调整山峰颜色，保留橙色聚焦框与全部路径；`generated/home-logo-light.png` 和 `generated/home-logo-dark.png` 使用绘图边界导出，仅用于主界面。水印相机继续使用独立的白色水印资源。

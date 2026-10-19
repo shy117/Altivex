@@ -10,6 +10,8 @@
     <string>Altivex 使用气压传感器测量气压并跟踪高度变化。</string>
     <key>NSCameraUsageDescription</key>
     <string>Altivex 使用摄像头拍摄包含海拔及经纬度水印的照片。</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Altivex 允许您选择照片作为主界面背景。</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Altivex 将您拍摄的水印照片保存到相册。</string>
 
@@ -64,6 +66,8 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
